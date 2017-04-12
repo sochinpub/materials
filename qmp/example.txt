@@ -1,0 +1,177 @@
+https://people.cs.clemson.edu/~ccorsi/kyouko/docs/writing-qmp-commands.txt
+
+When dump-guest-memory is requested with detach flag, after its
+return, user could query its status using "query-dump" command (with
+no argument). The result contains:
+
+- status: current dump status
+- completed: bytes written in the latest dump
+- total: bytes to write in the latest dump
+
+>From completed and total, we could know how much work
+finished by calculating:
+
+  100.0 * completed / total (%)
+
+Reviewed-by:   Fam Zheng <address@hidden>
+Signed-off-by: Peter Xu <address@hidden>
+---
+ dump.c           | 23 +++++++++++++++++++----
+ qapi-schema.json | 32 +++++++++++++++++++++++++++++++-
+ qmp-commands.hx  | 27 ++++++++++++++++++++++++++-
+ 3 files changed, 76 insertions(+), 6 deletions(-)
+
+diff --git a/dump.c b/dump.c
+index cd4ae5e..9dc4946 100644
+--- a/dump.c
++++ b/dump.c
+@@ -1456,7 +1456,7 @@ static void dump_state_prepare(DumpState *s)
+ bool dump_in_progress(void)
+ {
+     DumpState *state = &dump_state_global;
+-    return (state->status == DUMP_STATUS_ACTIVE);
++    return (atomic_read(&state->status) == DUMP_STATUS_ACTIVE);
+ }
+ 
+ /* calculate total size of memory to be dumped (taking filter into
+@@ -1669,9 +1669,12 @@ static void dump_process(DumpState *s, Error **errp)
+         create_vmcore(s, &local_err);
+     }
+ 
+-    s->status = (local_err ? DUMP_STATUS_FAILED : DUMP_STATUS_COMPLETED);
+-    error_propagate(errp, local_err);
++    /* make sure status is written after written_size updates */
++    smp_wmb();
++    atomic_set(&s->status,
++               (local_err ? DUMP_STATUS_FAILED : DUMP_STATUS_COMPLETED));
+ 
++    error_propagate(errp, local_err);
+     dump_cleanup(s);
+ }
+ 
+@@ -1689,6 +1692,18 @@ static void *dump_thread(void *data)
+     return NULL;
+ }
+ 
++DumpQueryResult *qmp_query_dump(Error **errp)
++{
++    DumpQueryResult *result = g_new(DumpQueryResult, 1);
++    DumpState *state = &dump_state_global;
++    result->status = atomic_read(&state->status);
++    /* make sure we are reading status and written_size in order */
++    smp_rmb();
++    result->completed = state->written_size;
++    result->total = state->total_size;
++    return result;
++}
++
+ void qmp_dump_guest_memory(bool paging, const char *file,
+                            bool has_detach, bool detach,
+                            bool has_begin, int64_t begin, bool has_length,
+@@ -1779,7 +1794,7 @@ void qmp_dump_guest_memory(bool paging, const char *file,
+               begin, length, &local_err);
+     if (local_err) {
+         error_propagate(errp, local_err);
+-        s->status = DUMP_STATUS_FAILED;
++        atomic_set(&s->status, DUMP_STATUS_FAILED);
+         return;
+     }
+ 
+diff --git a/qapi-schema.json b/qapi-schema.json
+index ccd30c8..7b8f2a1 100644
+--- a/qapi-schema.json
++++ b/qapi-schema.json
+@@ -2196,7 +2196,8 @@
+ #               is the fd's name.
+ #
+ # @detach: #optional if true, QMP will return immediately rather than
+-#          waiting for the dump to finish. (since 2.6).
++#          waiting for the dump to finish. The user can track progress
++#          using "query-dump". (since 2.6).
+ #
+ # @begin: #optional if specified, the starting physical address.
+ #
+@@ -2237,6 +2238,35 @@
+   'data': [ 'none', 'active', 'completed', 'failed' ] }
+ 
+ ##
++# @DumpQueryResult
++#
++# The result format for 'query-dump'.
++#
++# @status: enum of @DumpStatus, which shows current dump status
++#
++# @completed: bytes written in latest dump (uncompressed)
++#
++# @total: total bytes to be written in latest dump (uncompressed)
++#
++# Since 2.6
++##
++{ 'struct': 'DumpQueryResult',
++  'data': { 'status': 'DumpStatus',
++            'completed': 'int',
++            'total': 'int' } }
++
++##
++# @query-dump
++#
++# Query latest dump status.
++#
++# Returns: A @DumpStatus object showing the dump status.
++#
++# Since: 2.6
++##
++{ 'command': 'query-dump', 'returns': 'DumpQueryResult' }
++
++##
+ # @DumpGuestMemoryCapability:
+ #
+ # A list of the available formats for dump-guest-memory
+diff --git a/qmp-commands.hx b/qmp-commands.hx
+index d30b1eb..daaafe5 100644
+--- a/qmp-commands.hx
++++ b/qmp-commands.hx
+@@ -856,7 +856,8 @@ Arguments:
+ - "protocol": destination file(started with "file:") or destination file
+               descriptor (started with "fd:") (json-string)
+ - "detach": if specified, command will return immediately, without waiting
+-            for the dump to finish (json-bool)
++            for the dump to finish. The user can track progress using
++            "query-dump". (json-bool)
+ - "begin": the starting physical address. It's optional, and should be 
+specified
+            with length together (json-int)
+ - "length": the memory size, in bytes. It's optional, and should be specified
+@@ -896,6 +897,30 @@ Example:
+ 
+ EQMP
+ 
++    {
++        .name       = "query-dump",
++        .args_type  = "",
++        .params     = "",
++        .help       = "query background dump status",
++        .mhandler.cmd_new = qmp_marshal_query_dump,
++    },
++
++SQMP
++query-dump
++----------
++
++Query background dump status.
++
++Arguments: None.
++
++Example:
++
++-> { "execute": "query-dump" }
++<- { "return": { "status": "active", "completed": 1024000,
++                 "total": 2048000 } }
++
++EQMP
++
+ #if defined TARGET_S390X
+     {
+         .name       = "dump-skeys",
+-- 
+2.4.3
