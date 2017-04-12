@@ -1,0 +1,3 @@
+新版本不再需要修改qmp-commands.hx
+
+http://patchwork.ozlabs.org/patch/733801/
