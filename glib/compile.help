@@ -1,0 +1,14 @@
+gcc -I/usr/include/glib-2.0-I/usr/lib/glib-2.0/include 
+-lglib-2.0 -o hellohello.c
+这个是最基础的。。
+但是上面的编译很麻烦，稍微简单一点的就是可以这样：
+gcc `pkg-config --cflags --libs glib-2.0`  hello.c-o hello
+在GLIB中将线程（gthread），插件（gmoudle）和对象系统（gobject）这三个子系统区别对待，编译时要注意加入相应的参数。
+如程序中用到对象系统，编译时就应加入：
+`pkg-config --cflags --libs gobject-2.0`
+
+用到线程，编译时则加入：
+`pkg-config --cflags --libs gthread-2.0`
+用到插件，编译时则加入：
+
+`pkg-config --cflags --libs gmoudle-2.0`
