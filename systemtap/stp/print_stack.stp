@@ -1,0 +1,12 @@
+#!/usr/bin/stap
+#
+# 内核栈打印
+
+probe kernel.function(@1) {
+    print("-------------------------------start--------------------------\n")
+    printf("In process [%s] \n", execname())
+    print_regs()
+    print_backtrace()
+    print("------------------------------- end --------------------------\n")
+    exit()
+}

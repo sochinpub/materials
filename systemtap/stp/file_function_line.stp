@@ -1,0 +1,11 @@
+#!/usr/bin/stap
+
+#探测函数入口
+probe kernel.function("*@net/socket.c") {
+}
+
+# 探测函数返回
+probe kernel.function("@net/socket.c").return {
+}
+
+#可以用:探测行号
