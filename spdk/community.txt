@@ -1,0 +1,28 @@
+
+
+
+通过gerritHub提交patch,patch会被社区投票。每个patch至少需要
+两个普通的篇和两个社区核心maintainers的投票才能被合入。
+
+
+
+1、待开发列表：
+https://trello.com/spdk
+
+一旦代码何如，代码仓库的文档应该比trello的材料更可信。
+
+
+2、开发指导：
+
+开发者一般不需要添加特殊的reviewer到自己的patch中，但只要愿意也可以
+添加或被添加到patch reviewers列表中。
+
+patch被merge之前，必须回复解释所有的评论，评论要么被解释清楚，要么通过修改代码回复。
+
+patch作者，包括核心maintainers无法给自己的patch做+1和+2操作，但可以做-1操作来告诉他人
+这个patch不想被合入。
+
+3、GerritHub 配置
+
+
+KovJeA9Yotf9kn/nFHHV2WXDy/Fqfr9pN9URaGAAvQ
